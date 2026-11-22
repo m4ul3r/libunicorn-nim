@@ -32,21 +32,21 @@ proc test_arm64(): bool =
     return false
 
   # map 2MB memory for this emulation
-  uc_mem_map(uc, ADDRESS, 2*1024*1024, UC_PROT_ALL)
+  discard uc_mem_map(uc, ADDRESS, 2*1024*1024, uint32(UC_PROT_ALL))
 
   # write machine code to be emulated to memory
-  uc_mem_write(uc, ADDRESS, PTR(ARM64_CODE), ARM64_CODE.len)
+  discard uc_mem_write(uc, ADDRESS, PTR(ARM64_CODE), uint64(ARM64_CODE.len))
 
   # init machine regs
-  uc_reg_write(uc, UC_ARM64_REG_X11, x11.addr)
-  uc_reg_write(uc, UC_ARM64_REG_X13, x13.addr)
-  uc_reg_write(uc, UC_ARM64_REG_X15, x15.addr)
+  discard uc_reg_write(uc, cint(ord(UC_ARM64_REG_X11)), x11.addr)
+  discard uc_reg_write(uc, cint(ord(UC_ARM64_REG_X13)), x13.addr)
+  discard uc_reg_write(uc, cint(ord(UC_ARM64_REG_X15)), x15.addr)
 
   # tracing all basic blocks with customized callback
-  uc_hook_add(uc, trace1.addr, UC_HOOK_BLOCK, hook_block, nil, 1, 0)
+  discard uc_hook_add(uc, trace1.addr, cint(UC_HOOK_BLOCK), hook_block, nil, 1, 0)
 
   # tracing one instruction at ADDRESS with customized callback
-  uc_hook_add(uc, trace2.addr, UC_HOOK_CODE, hook_code, nil, ADDRESS, ADDRESS)
+  discard uc_hook_add(uc, trace2.addr, cint(UC_HOOK_CODE), hook_code, nil, ADDRESS, ADDRESS)
 
   # emulate machine code in infinite time or when finishing all the code
   err = uc_emu_start(uc, ADDRESS, (ADDRESS + ARM64_CODE.len.uint), 0, 0)
@@ -57,10 +57,10 @@ proc test_arm64(): bool =
   echo ">>> Emulation done. Below is the CPU context"
   echo ">>> As little endian, x16 should be 0x78"
 
-  uc_reg_read(uc, UC_ARM64_REG_X15, x15.addr)
+  discard uc_reg_read(uc, cint(ord(UC_ARM64_REG_X15)), x15.addr)
   echo &">>> X15 = {x15:#X}"
 
-  uc_close(uc)
+  discard uc_close(uc)
 
   return true
 
