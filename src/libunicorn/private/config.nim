@@ -1,11 +1,14 @@
 ## Build configuration: where the Unicorn library is and which version it is.
 ##
-## By default everything comes from `pkg-config unicorn`. For cross builds,
-## static archives or systems without pkg-config, pass the linker flags
+## By default everything comes from `pkg-config unicorn`; `-d:unicornStatic`
+## then links `libunicorn.a` from its library directory, together with the
+## libraries the archive itself needs, instead of the shared library.
+##
+## For cross builds or systems without pkg-config, pass the linker flags
 ## yourself; pkg-config is then not consulted at all:
 ##
 ## * `-d:unicornLibs="-L/opt/uc/lib -lunicorn"`: linker flags, used as they
-##   are.
+##   are (also with `-d:unicornStatic`: name the archive and what it needs).
 ## * `-d:unicornVersion=2.1.4`: version of that library; required with
 ##   `unicornLibs`, because it decides which functions exist.
 ## * `-d:unicornCflags="-I/opt/uc/include"`: where its headers are. Without it
@@ -47,6 +50,16 @@ proc versionPart(version: string; index: int): int {.compileTime.} =
 proc versionTriple(version: string): (int, int, int) {.compileTime, used.} =
   (versionPart(version, 0), versionPart(version, 1), versionPart(version, 2))
 
+proc staticLibs(dynamicLibs, libdir: string): string {.compileTime, used.} =
+  ## The archive instead of `-lunicorn`, plus what the archive itself needs
+  ## (`Libs.private`: libm and pthread), which plain `--libs` leaves out.
+  ## (The pkg-config calls are made by the caller: a compile-time proc called
+  ## with literal arguments inside another proc is evaluated as soon as that
+  ## proc is defined, whether or not it is ever called.)
+  for flag in dynamicLibs.splitWhitespace:
+    if flag == "-lunicorn": result.add libdir & "/libunicorn.a "
+    else: result.add flag & " "
+
 when unicornLibs.len > 0:
   when unicornVersion.len == 0:
     {.error: "libunicorn: -d:unicornLibs also needs -d:unicornVersion=<x.y.z>, " &
@@ -72,7 +85,9 @@ elif defined(nimcheck) or defined(nimsuggest):
                        else: $UC_API_MAJOR & "." & $UC_API_MINOR & "." & $UC_API_PATCH)
 else:
   const
-    linkFlags* = pkgConfig("--libs")
+    linkFlags* = (when defined(unicornStatic):
+                    staticLibs(pkgConfig("--libs --static"), pkgConfig("--variable=libdir"))
+                  else: pkgConfig("--libs"))
     headerFlags* = (if unicornCflags.len > 0: unicornCflags else: pkgConfig("--cflags"))
     headersKnown* = true
     pkgVersion* = pkgConfig("--modversion")
