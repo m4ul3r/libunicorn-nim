@@ -212,7 +212,7 @@ var
   uc: ptr uc_engine
   value: uint64
   size = csize_t(sizeof(value))
-echo uc_reg_read2(uc, cint(ord(UC_X86_REG_RAX)), addr value, addr size)
+echo uc_reg_read2(uc, UC_X86_REG_RAX, addr value, addr size)
 """)
       check "uc_reg_read2 needs Unicorn 2.1.0 or later; this build is against Unicorn 2.0.1." in
         refusal(source = newer)
