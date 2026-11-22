@@ -15,12 +15,21 @@ when defined(posix):
   let
     work = createTempDir("libunicorn_guards_", "")
     probe = work / "probe.nim"
+    apiProbe = work / "api_probe.nim"
     fakeBin = work / "bin"
   createDir(fakeBin)
   writeFile(probe, """
 import libunicorn/raw
 var uc = cast[ptr uc_engine](1)
 echo uc_open(UC_ARCH_X86, UC_MODE_64, addr uc), " nil=", uc == nil
+""")
+  writeFile(apiProbe, """
+import libunicorn
+try:
+  let uc = initUnicorn(UC_ARCH_X86, UC_MODE_64)
+  echo "opened ", uc.arch
+except UnicornError as e:
+  echo "UnicornError ", e.code
 """)
 
   proc fakePkgConfig(script: string) =
@@ -75,9 +84,9 @@ echo uc_open(UC_ARCH_X86, UC_MODE_64, addr uc), " nil=", uc == nil
     let (output, ok) = build(args, fake, stage, source)
     if not ok: raise newException(CatchableError, "the build failed:\n" & output)
 
-  proc printed(args: openArray[string] = []): string =
-    ## What the probe prints when built with `args` against the installed Unicorn.
-    accept(args, fake = false, stage = link)
+  proc printed(args: openArray[string] = []; source = probe): string =
+    ## What `source` prints when built with `args` against the installed Unicorn.
+    accept(args, fake = false, stage = link, source = source)
     execCmdEx(quoteShell(work / "probe")).output.strip
 
   proc doctoredHeaders(name, text: string): string =
@@ -220,6 +229,11 @@ echo uc_reg_read2(uc, UC_X86_REG_RAX, addr value, addr size)
       fakeVersion("2.1.0")
       accept(source = newer)
 
+    test "the Nim API without ORC or ARC is refused with the reason":
+      let output = refusal(["--mm:refc"], fake = false, source = apiProbe)
+      check "libunicorn's Nim API needs --mm:orc or --mm:arc." in output
+      check "The C API (uc_open, uc_emu_start, ...) works with any memory manager." in output
+
     test "the C API builds with --mm:refc":
       accept(["--mm:refc"], fake = false)
 
@@ -232,8 +246,12 @@ echo uc_reg_read2(uc, UC_X86_REG_RAX, addr value, addr size)
     test "uc_open refuses a library older than the one the program was built for":
       check printed(builtForNewer()) == "UC_ERR_VERSION nil=true"
 
-    test "the same program opens the library it was built for":
+    test "initUnicorn raises UnicornError with that code":
+      check printed(builtForNewer(), source = apiProbe) == "UnicornError UC_ERR_VERSION"
+
+    test "the same programs open the library they were built for":
       check printed() == "UC_ERR_OK nil=false"
+      check printed(source = apiProbe) == "opened UC_ARCH_X86"
 
     test "a program built for an older Unicorn opens a newer library":
       # The installed library, declared to the build as 2.0.0, the oldest one
