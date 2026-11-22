@@ -268,4 +268,44 @@ echo uc_reg_read2(uc, UC_X86_REG_RAX, addr value, addr size)
         check output == (if installed >= (2, 1, 4): "UC_ERR_VERSION nil=true"
                          else: "UC_ERR_OK nil=false")
 
+  suite "static linking":
+    # `-d:unicornStatic` links `libunicorn.a` from pkg-config's library
+    # directory. Not every distribution ships the archive; without it there
+    # is nothing to test.
+    proc archive(): string =
+      ## The archive `-d:unicornStatic` links; empty when it is not installed.
+      result = pkgConfig("--variable=libdir") / "libunicorn.a"
+      if not fileExists(result): result = ""
+
+    proc needsSharedUnicorn(): bool =
+      ## Whether the program built last asks the loader for the shared library.
+      "libunicorn" in execCmdEx("ldd " & quoteShell(work / "probe")).output
+
+    test "-d:unicornStatic puts the library into the program":
+      if archive().len == 0:
+        skip()
+      else:
+        let dynamic = printed()
+        check dynamic == "UC_ERR_OK nil=false"
+        when defined(linux):
+          check needsSharedUnicorn()
+        check printed(["-d:unicornStatic"]) == dynamic
+        when defined(linux):
+          check not needsSharedUnicorn()
+
+    test "with -d:unicornLibs the archive is named there and pkg-config is not asked":
+      if archive().len == 0:
+        skip()
+      else:
+        # The archive and what it needs itself (libm, pthread).
+        let
+          libs = pkgConfig("--libs --static").replace("-lunicorn", archive())
+          version = pkgConfig("--modversion")
+        fakePkgConfig("echo 'pkg-config was asked' >&2; exit 1")
+        accept(["-d:unicornStatic", "-d:unicornLibs=" & libs, "-d:unicornVersion=" & version],
+               stage = link)
+        check execCmdEx(quoteShell(work / "probe")).output.strip == "UC_ERR_OK nil=false"
+        when defined(linux):
+          check not needsSharedUnicorn()
+
   removeDir(work)
