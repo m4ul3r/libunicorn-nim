@@ -45,7 +45,8 @@ const
 
 static:
   doAssert major == 2, "no bindings are kept for Unicorn " & version
-  # One file serves every Unicorn 2: the API only grows.
+  # One file serves every Unicorn 2: the API only grows, and `raw.nim` guards
+  # what an older library lacks. It refers to declarations up to 2.1.4.
   doAssert (parseInt(numbers[1]), parseInt(numbers[2])) >= (1, 4),
     "generate the bindings from Unicorn 2.1.4 or later, not " & version
 
