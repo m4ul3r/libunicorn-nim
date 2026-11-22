@@ -1,19 +1,19 @@
-import std/[endians, strformat, strutils]
+import std/[strformat, strutils]
 import libunicorn
 
 let 
   X86_CODE64 = "\x41\xBC\x3B\xB0\x28\x2A\x49\x0F\xC9\x90\x4D\x0F\xAD\xCF\x49\x87\xFD\x90\x48\x81\xD2\x8A\xCE\x77\x35\x48\xF7\xD9\x4D\x29\xF4\x49\x81\xC9\xF6\x8A\xC6\x53\x4D\x87\xED\x48\x0F\xAD\xD2\x49\xF7\xD4\x48\xF7\xE1\x4D\x19\xC5\x4D\x89\xC5\x48\xF7\xD6\x41\xB8\x4F\x8D\x6B\x59\x4D\x87\xD0\x68\x6A\x1E\x09\x3C\x59"
   X86_CODE64_SYSCALL = "\x0f\x05" # syscall
-  ADDRESS       = 0x1000000'u
+  ADDRESS       = 0x1000000'u64
 
-proc hook_block(uc: ptr uc_engine, address: uint, size: int, user_data: pointer) =
+proc hook_block(uc: ptr uc_engine, address: uint64, size: uint32, user_data: pointer) {.cdecl.} =
   ## callback for tracing basic blocks
   echo &">>> Tracing basic block at {address:#X} block size = {size}"
 
-proc hook_code64(uc: ptr uc_engine, address: uint, size: int, user_data: pointer) = 
+proc hook_code64(uc: ptr uc_engine, address: uint64, size: uint32, user_data: pointer) {.cdecl.} = 
   ## callback for tracing instruction
-  var rip: uint
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_RIP)), rip.addr)
+  var rip: uint64
+  discard uc_reg_read(uc, UC_X86_REG_RIP, rip.addr)
   echo &">>> Tracing instruction at {address:#X} instruction size = {size}"
   echo &">>> RIP is {rip:#X}"
 
@@ -21,7 +21,7 @@ proc hook_code64(uc: ptr uc_engine, address: uint, size: int, user_data: pointer
   # if (address == 0x1000009):
   #   uc_emu_stop(uc)
 
-proc hook_mem64(uc: ptr uc_engine, typ: uc_mem_type, address: uint, size: int, value: int, user_data: pointer) = 
+proc hook_mem64(uc: ptr uc_engine, typ: uc_mem_type, address: uint64, size: cint, value: int64, user_data: pointer) {.cdecl.} = 
   ## callback for memory reads/writes
   case typ:
   of UC_MEM_READ:
@@ -31,13 +31,13 @@ proc hook_mem64(uc: ptr uc_engine, typ: uc_mem_type, address: uint, size: int, v
   else:
     discard
 
-proc hook_syscall(uc: ptr uc_engine, user_data: pointer) = 
+proc hook_syscall(uc: ptr uc_engine, user_data: pointer) {.cdecl.} = 
   ## callback for syscall instruction (x86_64)
-  var rax: uint
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_RAX)), rax.addr)
+  var rax: uint64
+  discard uc_reg_read(uc, UC_X86_REG_RAX, rax.addr)
   if (rax == 0x100):
     rax = 0x200
-    discard uc_reg_write(uc, cint(ord(UC_X86_REG_RAX)), rax.addr)
+    discard uc_reg_write(uc, UC_X86_REG_RAX, rax.addr)
   else:
     echo &"[!] was not expecting rax={rax:#X} in syscall"
 
@@ -48,20 +48,20 @@ proc test_x86_64(): bool =
     err: uc_err
     trace1, trace2, trace3, trace4: uc_hook
 
-    rax = 0x71f3029efd49d41d'u
-    rbx = 0xd87b45277f133ddb'u
-    rcx = 0xab40d1ffd8afc461'u
-    rdx = 0x0919317b4a733f01'u
-    rsi = 0x4c24e753a17ea358'u
-    rdi = 0xe509a57d2571ce96'u
-    r8  = 0xea5b108cc2b9ab1f'u
-    r9  = 0x19ec097c8eb618c1'u
-    r10 = 0xec45774f00c5f682'u
-    r11 = 0xe17e9dbec8c074aa'u
-    r12 = 0x80f86a8dc0f6d457'u
-    r13 = 0x48288ca5671c5492'u
-    r14 = 0x595f72f6e4017f6e'u
-    r15 = 0x1efd97aea331cccc'u
+    rax = 0x71f3029efd49d41d'u64
+    rbx = 0xd87b45277f133ddb'u64
+    rcx = 0xab40d1ffd8afc461'u64
+    rdx = 0x0919317b4a733f01'u64
+    rsi = 0x4c24e753a17ea358'u64
+    rdi = 0xe509a57d2571ce96'u64
+    r8  = 0xea5b108cc2b9ab1f'u64
+    r9  = 0x19ec097c8eb618c1'u64
+    r10 = 0xec45774f00c5f682'u64
+    r11 = 0xe17e9dbec8c074aa'u64
+    r12 = 0x80f86a8dc0f6d457'u64
+    r13 = 0x48288ca5671c5492'u64
+    r14 = 0x595f72f6e4017f6e'u64
+    r15 = 0x1efd97aea331cccc'u64
 
     rsp = ADDRESS + 0x200000
 
@@ -73,64 +73,64 @@ proc test_x86_64(): bool =
     return false
 
   # Map 2MB memory for emulation
-  discard uc_mem_map(uc, ADDRESS, 2*1024*1024, uint32(UC_PROT_ALL))
+  discard uc_mem_map(uc, ADDRESS, 2*1024*1024, UC_PROT_ALL)
 
   # write machine code to emulated memory
-  if (uc_mem_write(uc, ADDRESS, PTR(X86_CODE64), X86_CODE64.len.csize_t).bool):
+  if (uc_mem_write(uc, ADDRESS, X86_CODE64.toOpenArrayByte(0, X86_CODE64.high)).bool):
     echo "[!] Failed to write emulation code to memory"
     return false
 
   # initialize machine registers
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_RSP)), rsp.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_RAX)), rax.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_RBX)), rbx.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_RCX)), rcx.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_RDX)), rdx.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_RSI)), rsi.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_RDI)), rdi.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_R8)),  r8.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_R9)),  r9.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_R10)), r10.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_R11)), r11.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_R12)), r12.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_R13)), r13.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_R14)), r14.addr)
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_R15)), r15.addr)
+  discard uc_reg_write(uc, UC_X86_REG_RSP, rsp.addr)
+  discard uc_reg_write(uc, UC_X86_REG_RAX, rax.addr)
+  discard uc_reg_write(uc, UC_X86_REG_RBX, rbx.addr)
+  discard uc_reg_write(uc, UC_X86_REG_RCX, rcx.addr)
+  discard uc_reg_write(uc, UC_X86_REG_RDX, rdx.addr)
+  discard uc_reg_write(uc, UC_X86_REG_RSI, rsi.addr)
+  discard uc_reg_write(uc, UC_X86_REG_RDI, rdi.addr)
+  discard uc_reg_write(uc, UC_X86_REG_R8,  r8.addr)
+  discard uc_reg_write(uc, UC_X86_REG_R9,  r9.addr)
+  discard uc_reg_write(uc, UC_X86_REG_R10, r10.addr)
+  discard uc_reg_write(uc, UC_X86_REG_R11, r11.addr)
+  discard uc_reg_write(uc, UC_X86_REG_R12, r12.addr)
+  discard uc_reg_write(uc, UC_X86_REG_R13, r13.addr)
+  discard uc_reg_write(uc, UC_X86_REG_R14, r14.addr)
+  discard uc_reg_write(uc, UC_X86_REG_R15, r15.addr)
 
   # tracing all basic blocks with customized callback
-  discard uc_hook_add(uc, trace1.addr, cint(UC_HOOK_BLOCK), hook_block, nil, 1, 0)
+  discard uc_hook_add(uc, trace1.addr, UC_HOOK_BLOCK, hook_block, nil, 1, 0)
 
   # tracing all instructions in the range [ADDRESS, ADDRESS+20]
-  discard uc_hook_add(uc, trace2.addr, cint(UC_HOOK_CODE), hook_code64, nil, ADDRESS, ADDRESS+20)
+  discard uc_hook_add(uc, trace2.addr, UC_HOOK_CODE, hook_code64, nil, ADDRESS, ADDRESS+20)
     
   # tracing all memory WRITE access (with @begin > @end)
-  discard uc_hook_add(uc, trace3.addr, cint(UC_HOOK_MEM_WRITE), hook_mem64, nil, 1, 0)
+  discard uc_hook_add(uc, trace3.addr, UC_HOOK_MEM_WRITE, hook_mem64, nil, 1, 0)
 
   # tracing all memory READ access (with @begin > @end)
-  discard uc_hook_add(uc, trace4.addr, cint(UC_HOOK_MEM_READ), hook_mem64, nil, 1, 0)
+  discard uc_hook_add(uc, trace4.addr, UC_HOOK_MEM_READ, hook_mem64, nil, 1, 0)
 
   # emulate machine code in infinite time (last param = 0) or when finishing all the code
-  err = uc_emu_start(uc, ADDRESS, ADDRESS + X86_CODE64.len.uint, 0, 0)
+  err = uc_emu_start(uc, ADDRESS, ADDRESS + X86_CODE64.len.uint64, 0, 0)
   if err.bool:
     echo "[!] Failed on uc_emu_start() with error: ", uc_strerror(err)
     return false
 
   # print out some registers
   echo ">>> Emulation done. Below is the CPU context"
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_RAX)), rax.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_RBX)), rbx.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_RCX)), rcx.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_RDX)), rdx.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_RSI)), rsi.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_RDI)), rdi.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_R8)),  r8.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_R9)),  r9.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_R10)), r10.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_R11)), r11.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_R12)), r12.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_R13)), r13.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_R14)), r14.addr)
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_R15)), r15.addr)
+  discard uc_reg_read(uc, UC_X86_REG_RAX, rax.addr)
+  discard uc_reg_read(uc, UC_X86_REG_RBX, rbx.addr)
+  discard uc_reg_read(uc, UC_X86_REG_RCX, rcx.addr)
+  discard uc_reg_read(uc, UC_X86_REG_RDX, rdx.addr)
+  discard uc_reg_read(uc, UC_X86_REG_RSI, rsi.addr)
+  discard uc_reg_read(uc, UC_X86_REG_RDI, rdi.addr)
+  discard uc_reg_read(uc, UC_X86_REG_R8,  r8.addr)
+  discard uc_reg_read(uc, UC_X86_REG_R9,  r9.addr)
+  discard uc_reg_read(uc, UC_X86_REG_R10, r10.addr)
+  discard uc_reg_read(uc, UC_X86_REG_R11, r11.addr)
+  discard uc_reg_read(uc, UC_X86_REG_R12, r12.addr)
+  discard uc_reg_read(uc, UC_X86_REG_R13, r13.addr)
+  discard uc_reg_read(uc, UC_X86_REG_R14, r14.addr)
+  discard uc_reg_read(uc, UC_X86_REG_R15, r15.addr)
 
   echo &">>> RAX = {rax:#X}"
   echo &">>> RBX = {rbx:#X}"
@@ -155,7 +155,7 @@ proc test_x86_64_syscall(): bool =
     uc:     ptr uc_engine
     trace1: uc_hook
     err:    uc_err
-    rax   = 0x100'u
+    rax   = 0x100'u64
   
   echo "\n================================================"
   echo "[i] Emulate x86_64 code with 'syscall' instructon"
@@ -167,28 +167,28 @@ proc test_x86_64_syscall(): bool =
     return false
 
   # map 2MB memory for this emulation
-  discard uc_mem_map(uc, ADDRESS, 2*1024*1024, uint32(UC_PROT_ALL))
+  discard uc_mem_map(uc, ADDRESS, 2*1024*1024, UC_PROT_ALL)
 
   # write machine code to be emulated to memory
-  if (uc_mem_write(uc, ADDRESS, PTR(X86_CODE64_SYSCALL), X86_CODE64_SYSCALL.len.csize_t).bool):
+  if (uc_mem_write(uc, ADDRESS, X86_CODE64_SYSCALL.toOpenArrayByte(0, X86_CODE64_SYSCALL.high)).bool):
     echo "[!] Failed to write emulation code to memory"
     return false
 
   # hook interrupts for syscall
-  discard uc_hook_add(uc, trace1.addr, cint(UC_HOOK_INSN), hook_syscall, nil, 1, 0, UC_X86_INS_SYSCALL)
+  discard uc_hook_add(uc, trace1.addr, UC_HOOK_INSN, hook_syscall, nil, 1, 0, UC_X86_INS_SYSCALL)
 
   # initialize machine registers
-  discard uc_reg_write(uc, cint(ord(UC_X86_REG_RAX)), rax.addr)
+  discard uc_reg_write(uc, UC_X86_REG_RAX, rax.addr)
 
   # emulate machine code in infinite time (last param = 0) or when finishing all the code
-  err = uc_emu_start(uc, ADDRESS, ADDRESS + X86_CODE64_SYSCALL.len.uint, 0, 0)
+  err = uc_emu_start(uc, ADDRESS, ADDRESS + X86_CODE64_SYSCALL.len.uint64, 0, 0)
   if err.bool:
     echo &"[!] Failed on uc_emu_start() with error returned {err}: {uc_strerror(err)}"
 
   # now print out some registers
   echo ">>> Emulation done. Below is the CPU context"
 
-  discard uc_reg_read(uc, cint(ord(UC_X86_REG_RAX)), rax.addr)
+  discard uc_reg_read(uc, UC_X86_REG_RAX, rax.addr)
 
   echo &">>> RAX = {rax:#X}"
 
